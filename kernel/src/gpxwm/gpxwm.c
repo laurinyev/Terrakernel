@@ -15,6 +15,12 @@ void PutPx(int x, int y, uint32_t color) {
     fb[y * (g_WM->dpy.pitch / 4) + x] = color;
 }
 
+uint32_t GetPx(int x, int y) {
+    if (x < 0 || x >= g_WM->dpy.xlen || y < 0 || y >= g_WM->dpy.ylen) return;
+    uint32_t *fb = (uint32_t *)g_WM->dpy.fbbase;
+    return fb[y * (g_WM->dpy.pitch / 4) + x];
+}
+
 void Flip() {
     volatile uint32_t* temp = g_WM->dpy.fbbase1;
     g_WM->dpy.fbbase1 = g_WM->dpy.fbbase2;
@@ -80,15 +86,38 @@ WMWindow* WMCreateWindow(const char *title, uint32_t color) {
     win->rect.width = tile_w;
     win->rect.height = tile_h;
 
+    win->WMPutPx = WMPutPxWindow;
+    win->event_table = NULL;
+
     g_WM->windows[g_WM->count++] = win;
     return win;
+}
+
+__attribute__((used, hot))
+void WMInvokeEvent(WMWindow* win, WMEventType ev_type, int arg1, int arg2, int arg3) {
+    if (!win || !win->event_table) return;
+
+    switch (ev_type) {
+        case WM_EVENT_KEY_DOWN:
+            if (win->event_table->on_key_down)
+                win->event_table->on_key_down(arg1);
+            break;
+        case WM_EVENT_KEY_UP:
+            if (win->event_table->on_key_up)
+                win->event_table->on_key_up(arg1);
+            break;
+        case WM_EVENT_KEY_PRESS:
+            if (win->event_table->on_key_press)
+                win->event_table->on_key_press((char)arg1);
+            break;
+    }
 }
 
 void WMDrawAll() {
     // background grid
     for (int y = 0; y < g_WM->dpy.ylen; y++) {
         for (int x = 0; x < g_WM->dpy.xlen; x++) {
-            PutPx(x, y, (x % 8 == 0 || y % 8 == 0) ? RGB(0,255,0) : RGB(0,0,0));
+            PutPx(x, y, (x % 8 == 0 || y % 8 == 0) ? RGB(60,60,60) : RGB(20,20,20));
         }
     }
 
@@ -100,7 +129,19 @@ void WMDrawAll() {
         // title bar
         for (int y = 0; y < TITLE_HEIGHT; y++)
             for (int x = 0; x < w->rect.width; x++)
-                WMPutPxWindow(w, x, y, RGB(0,255,0));
+                WMPutPxWindow(w, x, y, RGB(51,51,51));
+
+        font_set_colors(RGB(255,255,255), RGB(51,51,51));
+
+        int title_len = 0;
+        while (w->title[title_len]) title_len++;
+
+        int px = w->rect.x + 4; // 4px margin from left
+        int py = w->rect.y + 4; // 4px margin from top
+        for (int j = 0; j < title_len; j++)
+            font_put_char_pos(w->title[j], px + j * 8, py);
+
+        font_set_colors(RGB(255,255,255), w->color);
 
         // window body
         for (int y = TITLE_HEIGHT; y < w->rect.height; y++)
