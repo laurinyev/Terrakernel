@@ -1,29 +1,29 @@
 #ifndef SCHED_HPP
 #define SCHED_HPP 1
 
-#include <stdint.h>
+#include <cstdint>
 
-typedef struct {
-    uint64_t rax, rbx, rcx, rdx, rsi, rdi, rsp, rbp, rip, rflags, cr3;
+struct Registers {
+    uint64_t rax, rbx, rcx, rdx, rsi, rdi;
+    uint64_t rsp, rbp, rip, rflags, cr3;
     uint64_t r8, r9, r10, r11, r12, r13, r14, r15;
-} Registers;
+};
 
 struct Thread {
     Registers regs;
-    uint64_t stack_base;
-    Thread *next;
-    uint32_t pid;
-    bool TERMINATED = false;
+    uint32_t id;
+    bool terminated;
+    uint64_t* stack;
+    Thread* next;
 };
 
 namespace scheduler {
 
 void initialise();
-Thread* create_thread(void (*entry)(), uint64_t rflags, uint64_t* pml4 = 0);
-Thread* spawn_thread(void (*entry)());
-
+Thread* create(void (*fn)());
 void yield();
-extern "C" void switch_thread(Registers *old_regs, Registers *new_regs);
+void schedule();
+extern "C" void switch_thread(Registers* old_regs, Registers* new_regs);
 
 }
 

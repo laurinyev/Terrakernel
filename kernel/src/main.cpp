@@ -59,7 +59,7 @@ void proc2_child_thread() {
 
 void proc2() {
     int counter = 1;
-    Thread* child = scheduler::spawn_thread(proc2_child_thread);
+    scheduler::create(proc2_child_thread);
     printf("Started proc2\n\r");
     while (1) {
         printf("Proc2 running... %d\n\r", counter + (2*counter));
@@ -130,9 +130,9 @@ extern "C" void init() {
     
     scheduler::initialise();
 
-    Thread* proc0_thread = scheduler::spawn_thread(proc0);
-    Thread* proc1_thread = scheduler::spawn_thread(proc1);
-    Thread* proc2_thread = scheduler::spawn_thread(proc2);
+    scheduler::create(proc0);
+    scheduler::create(proc1);
+    scheduler::create(proc2);
 
     scheduler::yield();
 

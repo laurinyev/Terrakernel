@@ -1,6 +1,3 @@
-section .bss
-scratch: resq 2
-
 section .text
 global switch_thread
 switch_thread:
@@ -26,18 +23,19 @@ switch_thread:
     pushfq
     pop qword [rdi + 72]
 
-    lea rax, [rel .save_rip]
+    mov rax, [rsp]
     mov [rdi + 64], rax
 
     mov rax, cr3
     mov [rdi + 80], rax
 
-.save_rip:
-    mov rdx, rsi
-
     mov rax, [rsi + 0]
     mov rbx, [rsi + 8]
     mov rcx, [rsi + 16]
+    mov rdx, [rsi + 24]
+    mov rbp, [rsi + 56]
+    mov rsp, [rsi + 48]
+
     mov r8,  [rsi + 88]
     mov r9,  [rsi + 96]
     mov r10, [rsi + 104]
@@ -46,25 +44,18 @@ switch_thread:
     mov r13, [rsi + 128]
     mov r14, [rsi + 136]
     mov r15, [rsi + 144]
-    mov rbp, [rsi + 56]
-    mov rsp, [rsi + 48]
 
-    mov rax, [rsi + 32]
-    mov [scratch], rax
-    mov rax, [rsi + 40]
-    mov [scratch + 8], rax
-
-    mov rax, [rdx + 80]
-    mov rcx, cr3
-    cmp rax, rcx
+    mov rax, [rsi + 80]
+    push rbx
+    mov rbx, cr3
+    cmp rax, rbx
+    pop rbx
     je .skip_cr3
     mov cr3, rax
 .skip_cr3:
-    mov rax, [rdx + 72]
+
+    mov rax, [rsi + 72]
     push rax
     popfq
 
-    mov rsi, [scratch]
-    mov rdi, [scratch + 8]
-
-    jmp qword [rdx + 64]
+    jmp [rsi + 64]
