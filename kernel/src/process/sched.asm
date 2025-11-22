@@ -33,10 +33,14 @@ store_context:
 
 load_context:
     cmp qword [_context], 0
+    mov rax, 0xCAFEBABEDEADBEEF
     jz .end
 
     ;mov rax, [_context + 0x08]
     ;mov cr3, rax
+    mov ax, 0x3f8
+    mov dx, '!'
+    out dx, ax
 
     mov rsi, [_context + 0x10]
     mov rdi, [_context + 0x18]
@@ -56,7 +60,20 @@ load_context:
     mov rbp, [_context + 0x80]
     mov rsp, [_context + 0x88]
 
-    jmp [_context + 0x00]
+    mov rax, [_context + 0x00] ; return RIP
+
+    mov ax, 0x20
+    mov dx, 0x20
+    out dx, ax
+
+    push 0x10
+    push rsp
+    push 0x202
+    push 0x08
+    push rax 
+
+    iretq
 
 .end:
+
     ret

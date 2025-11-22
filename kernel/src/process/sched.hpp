@@ -38,14 +38,14 @@ pid_t spawn(void (*entry)(), bool kstack = true, bool kheap = true, void* stack_
 void exit(pid_t pid);
 pid_t current_pid();
 
-void yield(uint64_t rip);
+uint64_t yield(uint64_t rip);
 
 void begin();
 
 bool is_ready();
 
 extern "C" void store_context();
-extern "C" void load_context();
+extern "C" uint64_t load_context();
 
 }
 

@@ -2,8 +2,7 @@
 #include <drivers/serial/print.hpp>
 #include <mem/mem.hpp>
 
-Context _kernel_context;
-Context *_context = &_kernel_context;
+Context _context;
 uint64_t _rip = 0;
 
 Process* current_proc = nullptr;
@@ -99,9 +98,8 @@ pid_t get_next_pid() {
 Process* get_next_proc() {
     if (!root) { sched_dbgf("[get_next_proc] root is nullptr\n\r"); return nullptr; }
 
-    Process* p = root;
-    while (p->next)
-        p = p->next;
+    Process* curr = current_proc;
+    Process* p = curr->next;
 
     sched_dbgf("[get_next_proc] last process = %p\n\r", p);
     return p;
@@ -203,30 +201,31 @@ Process* next_proc_yield() {
     return next;
 }
 
-void yield(uint64_t rip) {
-    if (!ready) return;
-    
+uint64_t yield(uint64_t rip) {
+    if (!ready) return (uint64_t)zeroproc;
+
     sched_dbgf("[yield] called with RIP=%llx current_proc=%p\n\r", rip, current_proc);
     asm("cli");
 
-    if (!ready) { sched_dbgf("[yield] scheduler not ready\n\r"); asm("sti"); return; }
+    if (!ready) { sched_dbgf("[yield] scheduler not ready\n\r"); asm("sti"); return (uint64_t)zeroproc; }
 
     Process* this_ = current_proc;
     Process* next_ = next_proc_yield();
-    if (!next_) { sched_dbgf("[yield] no next process\n\r"); asm("sti"); return; }
+    if (!next_) { sched_dbgf("[yield] no next process\n\r"); asm("sti"); return (uint64_t)zeroproc; }
 
-    if (this_ && _context) {
+    if (this_ && &_context) {
         sched_dbgf("[yield] storing context of %p\n\r", this_);
         store_context();
-        mem::memcpy(&this_->ctx, _context, sizeof(Context));
+        mem::memcpy(&this_->ctx, &_context, sizeof(Context));
     }
 
     sched_dbgf("[yield] loading context of %p\n\r", next_);
-    mem::memcpy(_context, &next_->ctx, sizeof(Context));
+    mem::memcpy(&_context, &next_->ctx, sizeof(Context));
     current_proc = next_;
 
+    _rip = load_context();
     asm("sti");
-    load_context();
+    return _rip;
 }
 
 void begin() {

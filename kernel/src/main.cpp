@@ -67,7 +67,7 @@ extern "C" void init() {
     
     mem::vmm::initialise();
     Log::print_status("OK", "VMM Initialised");
-    
+
     mem::heap::initialise();
     Log::print_status("OK", "Heap Initialised");
     

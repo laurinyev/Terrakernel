@@ -41,7 +41,9 @@ SECTIONS
     . = ALIGN(CONSTANT(MAXPAGESIZE));
 
     .rodata : {
+        rodataStart = .;
         *(.rodata .rodata.*)
+        rodataEnd = .;
     } :rodata
 
     /* Add a .note.gnu.build-id output section in case a build ID flag is added to the */
