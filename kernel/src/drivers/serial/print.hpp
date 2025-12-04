@@ -12,6 +12,9 @@ namespace Log {
 	void info(const char* s);
 	void printf_status(const char* status, const char* fmt, ...);
 	void print_status(const char* status, const char* s);
+	// This panic implementation doesn't halt unlike <panic.hpp>:panic(const char*)
+	void panic(const char* message);
+	void putc(char c);
 }
 
 #endif /* PRINT_HPP */

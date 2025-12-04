@@ -37,7 +37,7 @@ namespace mem {
 		void initialise();
 
 		void* malloc(size_t n);
-		void* malloc_aliged(size_t n, size_t alignment); // preffered to use vmm::valloc instead
+		void* malloc_aligned(size_t n, size_t alignment); // preffered to use vmm::valloc instead
 		void* realloc(void* ptr, size_t n);
 		void* calloc(size_t n, size_t size);
 

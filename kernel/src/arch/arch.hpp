@@ -37,6 +37,12 @@ namespace cpu {
 		void clear_descriptor(uint8_t vector);
 	}
 }
+namespace ringctl {
+	extern "C" void execute_ring3(void (*entry)(), void* stack_base);
+}
+namespace syscall {
+	void initialise();
+}
 }
 }
 

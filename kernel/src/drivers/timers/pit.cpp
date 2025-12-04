@@ -1,6 +1,5 @@
 #include <drivers/timers/pit.hpp>
 #include <drivers/serial/print.hpp>
-#include <process/sched.hpp>
 
 struct pit_interrupt {
     void (*handler)();
@@ -52,9 +51,6 @@ static void pit_handler(interrupt_frame* frame) {
         }
     }
 
-    if (ticks % 10 == 0 && scheduler::is_ready())
-        frame->rip = scheduler::yield(frame->rip);
-    
     arch::x86_64::io::outb(0x20, 0x20);
 }
 

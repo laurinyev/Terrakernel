@@ -52,4 +52,12 @@ namespace Log {
 	void print_status(const char* status, const char* s) {
 		printf_status(status, "%s", s);
 	}
+
+	void panic(const char* message) {
+		printf("[ \x1b[1;31mPANIC!\x1b[0m ] %s\n\r", message);
+	}
+
+	void putc(char c) {
+		printf("%c", c);
+	}
 }

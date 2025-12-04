@@ -91,6 +91,7 @@ override SHARED_FLAGS := \
 # Internal C/C++ preprocessor flags that should not be changed by the user.
 override CPPFLAGS_C := \
 	-I src \
+	-I src/libcxx \
 	-I limine-protocol/include \
 	-isystem freestnd-c-hdrs/$(ARCH)/include \
 	$(CPPFLAGS) \

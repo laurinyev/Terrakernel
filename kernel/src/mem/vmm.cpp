@@ -1,6 +1,7 @@
 #include <mem/mem.hpp>
 #include <drivers/serial/print.hpp>
 
+uint64_t original_PML4 = 0;
 uint64_t default_PML4 = 0;
 uint64_t current_PML4 = 0;
 
@@ -21,11 +22,15 @@ uint64_t va_to_pa(uint64_t va) {
 }
 
 void initialise() {
-	uint64_t cr3;
-	asm volatile ("mov %%cr3, %0" : "=r"(cr3));
+    uint64_t cr3;
+    asm volatile ("mov %%cr3, %0" : "=r"(cr3));
+    
+    original_PML4 = cr3;
     default_PML4 = cr3;
-    current_PML4 = default_PML4;
+    current_PML4 = cr3;
 }
+
+void print_mem() {}
 
 void* valloc(size_t npages) {
     void* page = mem::pmm::palloc(npages);
@@ -37,7 +42,32 @@ void free(void* ptr, size_t npages) {
     mem::pmm::free((void*)page, npages);
 }
 
+bool is_mapped(void* vaddr) {
+    uint64_t va = (uint64_t)vaddr;
+
+    uint64_t pml4_index = (va >> 39) & 0x1FF;
+    uint64_t pdpt_index = (va >> 30) & 0x1FF;
+    uint64_t pd_index   = (va >> 21) & 0x1FF;
+    uint64_t pt_index   = (va >> 12) & 0x1FF;
+
+    uint64_t* pml4 = reinterpret_cast<uint64_t*>(current_PML4);
+    if (!(pml4[pml4_index] & PAGE_PRESENT)) return false;
+
+    uint64_t* pdpt = reinterpret_cast<uint64_t*>(pa_to_va(pml4[pml4_index] & ~0xFFF));
+    if (!(pdpt[pdpt_index] & PAGE_PRESENT)) return false;
+
+    uint64_t* pd = reinterpret_cast<uint64_t*>(pa_to_va(pdpt[pdpt_index] & ~0xFFF));
+    if (!(pd[pd_index] & PAGE_PRESENT)) return false;
+
+    uint64_t* pt = reinterpret_cast<uint64_t*>(pa_to_va(pd[pd_index] & ~0xFFF));
+    if (!(pt[pt_index] & PAGE_PRESENT)) return false;
+
+    return true;
+}
+
 void mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes) {
+    if (is_mapped(vaddr)) munmap(vaddr, npages);
+
     uint64_t va = (uint64_t)vaddr;
     uint64_t pa = (uint64_t)paddr;
 
@@ -47,33 +77,38 @@ void mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes) {
         uint64_t pd_index   = (va >> 21) & 0x1FF;
         uint64_t pt_index   = (va >> 12) & 0x1FF;
 
-        uint64_t* pml4 = reinterpret_cast<uint64_t*>(current_PML4);
+        if (current_PML4 == 0) Log::warnf("PML4 is zero");
+
+        uint64_t* pml4 = (uint64_t*)current_PML4;
         uint64_t* pdpt;
         uint64_t* pd;
         uint64_t* pt;
 
+        uint64_t intermediate_flags = PAGE_PRESENT | PAGE_RW;
+
         if (!(pml4[pml4_index] & PAGE_PRESENT)) {
-            uint64_t new_pdpt = (uint64_t)mem::pmm::palloc(1);
-            mem::memset(reinterpret_cast<void*>(mem::vmm::pa_to_va(new_pdpt)), 0, 0x1000);
-            pml4[pml4_index] = new_pdpt | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+            uint64_t* new_pdpt = (uint64_t*)valloc(1);
+            mem::memset(new_pdpt, 0, 0x1000);
+            pml4[pml4_index] = va_to_pa((uint64_t)new_pdpt) | intermediate_flags;
         }
-        pdpt = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pml4[pml4_index] & ~0xFFF));
+        pdpt = reinterpret_cast<uint64_t*>(pa_to_va(pml4[pml4_index] & ~0xFFF));
 
         if (!(pdpt[pdpt_index] & PAGE_PRESENT)) {
-            uint64_t new_pd = (uint64_t)mem::pmm::palloc(1);
-            mem::memset(reinterpret_cast<void*>(mem::vmm::pa_to_va(new_pd)), 0, 0x1000);
-            pdpt[pdpt_index] = new_pd | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+            uint64_t* new_pd = (uint64_t*)valloc(1);
+            mem::memset(new_pd, 0, 0x1000);
+            pdpt[pdpt_index] = va_to_pa((uint64_t)new_pd) | intermediate_flags;
         }
-        pd = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pdpt[pdpt_index] & ~0xFFF));
+        pd = reinterpret_cast<uint64_t*>(pa_to_va(pdpt[pdpt_index] & ~0xFFF));
 
         if (!(pd[pd_index] & PAGE_PRESENT)) {
-            uint64_t new_pt = (uint64_t)mem::pmm::palloc(1);
-            mem::memset(reinterpret_cast<void*>(mem::vmm::pa_to_va(new_pt)), 0, 0x1000);
-            pd[pd_index] = new_pt | PAGE_PRESENT | PAGE_RW | PAGE_USER;
+            uint64_t* new_pt = (uint64_t*)valloc(1);
+            mem::memset(new_pt, 0, 0x1000);
+            pd[pd_index] = va_to_pa((uint64_t)new_pt) | intermediate_flags;
         }
-        pt = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pd[pd_index] & ~0xFFF));
+        pt = reinterpret_cast<uint64_t*>(pa_to_va(pd[pd_index] & ~0xFFF));
 
-        pt[pt_index] = pa | attributes | PAGE_PRESENT;
+        uint64_t leaf_flags = PAGE_PRESENT | (attributes & (PAGE_RW | PAGE_USER));
+        pt[pt_index] = (pa & ~0xFFF) | leaf_flags;
     }
 }
 
@@ -89,13 +124,13 @@ void munmap(void* vaddr, size_t npages) {
         uint64_t* pml4 = reinterpret_cast<uint64_t*>(current_PML4);
         if (!(pml4[pml4_index] & PAGE_PRESENT)) continue;
 
-        uint64_t* pdpt = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pml4[pml4_index] & ~0xFFF));
+        uint64_t* pdpt = reinterpret_cast<uint64_t*>(pa_to_va(pml4[pml4_index] & ~0xFFF));
         if (!(pdpt[pdpt_index] & PAGE_PRESENT)) continue;
 
-        uint64_t* pd = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pdpt[pdpt_index] & ~0xFFF));
+        uint64_t* pd = reinterpret_cast<uint64_t*>(pa_to_va(pdpt[pdpt_index] & ~0xFFF));
         if (!(pd[pd_index] & PAGE_PRESENT)) continue;
 
-        uint64_t* pt = reinterpret_cast<uint64_t*>(mem::vmm::pa_to_va(pd[pd_index] & ~0xFFF));
+        uint64_t* pt = reinterpret_cast<uint64_t*>(pa_to_va(pd[pd_index] & ~0xFFF));
         if (!(pt[pt_index] & PAGE_PRESENT)) continue;
 
         pt[pt_index] = 0;
@@ -103,7 +138,7 @@ void munmap(void* vaddr, size_t npages) {
 }
 
 void switch_pagetable(uint64_t ptr) {
-    asm volatile ("mov %0, %%cr3" : : "r"(ptr) : "memory");
+    asm volatile ("mov %0, %%cr3" : : "r"(va_to_pa(ptr)) : "memory");
     current_PML4 = ptr;
 }
 

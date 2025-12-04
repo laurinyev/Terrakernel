@@ -121,11 +121,19 @@ static void irq_set_mask(uint8_t irq) {
 	arch::x86_64::io::outb(port, value);
 }
 
+__attribute__((interrupt))
+void test_usermode(int* frame) {
+	printf("USERMODE WORKS!!!\n\r");
+	while (1) asm volatile ("cli;hlt");
+}
+
 void initialise() {
 	for (int i = 0; i < 0x1F; i++) {
 		idt_set_vectors[i] = true;
 		set_descriptor(i, exception_stub_table[i], 0x8E);
 	}
+
+	set_descriptor(0x80, (uint64_t)test_usermode, 0xEE);
 	
 	idtr.limit = sizeof(idt) - 1;
 	idtr.base = (uint64_t)&idt;

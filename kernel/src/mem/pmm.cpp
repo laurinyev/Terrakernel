@@ -38,6 +38,26 @@ inline void bitmap_set(uint64_t index) { bitmap[index / 8] |= (1 << (index % 8))
 inline void bitmap_clear(uint64_t index) { bitmap[index / 8] &= ~(1 << (index % 8)); }
 inline bool bitmap_test(uint64_t index) { return bitmap[index / 8] & (1 << (index % 8)); }
 
+static inline void membulkset(void* ptr, uint64_t value, size_t bytes) {
+    uint8_t* p = (uint8_t*)ptr;
+
+    while (((uintptr_t)p & 7) && bytes) {
+        *p++ = (uint8_t)value;
+        bytes--;
+    }
+
+    uint64_t* p64 = (uint64_t*)p;
+    while (bytes >= 8) {
+        *p64++ = value;
+        bytes -= 8;
+    }
+
+    p = (uint8_t*)p64;
+    while (bytes--) {
+        *p++ = (uint8_t)value;
+    }
+}
+
 static void prepare_bitmap(uint64_t mem) {
 	bitmap_size = mem / 8;
 
@@ -55,7 +75,7 @@ static void prepare_bitmap(uint64_t mem) {
 
 	best->is_bitmap = true;
 	bitmap = reinterpret_cast<uint8_t*>(best->base);
-	mem::memset(bitmap, 0, bitmap_size);
+	membulkset(bitmap, 0, bitmap_size);
 }
 
 namespace mem::pmm {
@@ -280,3 +300,4 @@ void* reserve_heap(size_t npages) {
 }
 
 }
+
