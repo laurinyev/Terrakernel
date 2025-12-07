@@ -81,8 +81,6 @@ extern "C" void init() {
     uacpi_result = uacpi_finalize_gpe_initialization();
     UACPI_ERROR("GPE", 0);
 
-    asm("cli");
-
 	tmpfs::initialise();
     tmpfs::mkdir("/dev", 0777);
     int stdin = tmpfs::open("/dev/stdin", O_CREAT | O_RDWR);
@@ -93,6 +91,7 @@ extern "C" void init() {
     pci::initialise();
     Log::print_status("OK", "Detected all PCI devices");
 
+    /*
     ahci::initialise();
     Log::print_status("OK", "AHCI Initialised");
 
@@ -101,11 +100,11 @@ extern "C" void init() {
     for (int i = 0; i < sizeof(buf); i++) {
         printf("%c", buf[i]);
     }
+    */
 
 	arch::x86_64::syscall::initialise();
     Log::print_status("OK", "Syscalls Initialised");
 
-	asm("sti");
     while (1) {
     	asm volatile("hlt");
     }

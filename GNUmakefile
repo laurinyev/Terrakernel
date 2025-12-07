@@ -32,14 +32,12 @@ run: run-$(ARCH)
 .PHONY: run-hdd
 run-hdd: run-hdd-$(ARCH)
 
-.PHONY: run-x86_64
 run-x86_64: edk2-ovmf $(IMAGE_NAME).iso
 	qemu-system-$(ARCH) \
 		-M q35 \
 		-drive if=pflash,unit=0,format=raw,file=edk2-ovmf/ovmf-code-$(ARCH).fd,readonly=on \
-		-cdrom $(IMAGE_NAME).iso \
 		-device ich9-ahci,id=ahci0 \
-		-drive id=disk0,file=disk.img,format=raw,if=none \
+		-drive id=disk0,file=$(IMAGE_NAME).iso,format=raw,if=none \
 		-device ide-hd,drive=disk0,bus=ahci0.0 \
 		-device e1000 \
 		$(QEMUFLAGS)

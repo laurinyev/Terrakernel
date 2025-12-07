@@ -12,6 +12,7 @@ enum PageAttributes {
 	PAGE_PRESENT = 0x1,
 	PAGE_RW = 0x2,
 	PAGE_USER = 0x4,
+	PAGE_PCD = 0x10,
 	PAGE_NX = (1ULL << 63)
 };
 
