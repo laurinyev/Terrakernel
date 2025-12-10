@@ -6,7 +6,6 @@ qemu-system-x86
 build-essential
 binutils
 tar
-mtools
 ```
 
 To install them use:
@@ -25,4 +24,6 @@ make run
 ```
 
 By default the OS runs on x86_64 UEFI hardware
-If you want to run the OS on x86_64 BIOS you have to rewrite some parts of the GNUmakefile
+If you want to run the OS on x86_64 BIOS you will use make run-bios
+
+For some reason `make run-hdd` doesn't work, so just use `make run` with ISO :meme:

@@ -1,5 +1,16 @@
 #include "syscall.hpp"
 #include <drivers/serial/print.hpp>
+#include "syscalls/handlers.hpp"
+
+syscall_entry syscalls[512];
+int num_syscalls = 0;
+
+void add_syscall(int num, uint64_t* handler) {
+	if (num_syscalls >= 512) return;
+	syscalls[num_syscalls].num = num;
+	syscalls[num_syscalls].func = handler;
+	num_syscalls++;
+}
 
 static inline uint64_t rdmsr(uint32_t msr) {
     uint32_t lo, hi;
@@ -23,11 +34,22 @@ static inline void wrmsr(uint32_t msr, uint64_t value) {
 extern uint64_t _tss_rsp, _tss_rbp;
 
 extern "C" void syscall_func();
-extern "C" uint64_t syscall_run(uint64_t num, uint64_t arg0, uint64_t arg1, uint64_t arg2);
 extern "C" uint64_t syscall_handler(uint64_t rax, uint64_t rdi, uint64_t rsi,
 						 uint64_t rdx, uint64_t r10, uint64_t r8, uint64_t r9) {
-	return 0; //syscall_run(rax, rdi, rsi, r10);
+	for (int i = 0; i < num_syscalls; i++) {
+		if (syscalls[i].num == rax) {
+			printf("RAX= 0x%llX\n\rRDI= 0x%llX\n\rRSI= 0x%llX\n\rRDX= 0x%llX\n\rR10= 0x%llX\n\r",
+				rdi, rsi, rdx, r10
+			);
+			uint64_t (*handler)(uint64_t,uint64_t,uint64_t,uint64_t) = (uint64_t(*)(uint64_t,uint64_t,uint64_t,uint64_t))syscalls[i].func;
+			return handler(rdi, rsi, rdx, r10);
+		}
+	}
+	return (uint64_t)-1;
 }
+
+
+#define HANDLER(handler) ((uint64_t*)handler)
 
 namespace arch::x86_64::syscall {
 
@@ -43,6 +65,29 @@ void initialise() {
 	wrmsr(IA32_STAR, star);
 	wrmsr(IA32_LSTAR, (uint64_t)&syscall_func);
 	wrmsr(IA32_FMASK, 0);
+
+	add_syscall(2, HANDLER(sys_open));
+	add_syscall(3, HANDLER(sys_close));
+	add_syscall(0, HANDLER(sys_read));
+	add_syscall(1, HANDLER(sys_write));
+	add_syscall(17, HANDLER(sys_pread));
+	add_syscall(18, HANDLER(sys_pwrite));
+	add_syscall(8, HANDLER(sys_lseek));
+	add_syscall(5, HANDLER(sys_stat));
+	add_syscall(90, HANDLER(sys_chmod));
+	add_syscall(92, HANDLER(sys_chown));
+	add_syscall(77, HANDLER(sys_truncate));
+	add_syscall(74, HANDLER(sys_sync));
+	add_syscall(75, HANDLER(sys_datasync));
+	add_syscall(83, HANDLER(sys_mkdir));
+	add_syscall(80, HANDLER(sys_chdir));
+	add_syscall(86, HANDLER(sys_link));
+	add_syscall(87, HANDLER(sys_unlink));
+	add_syscall(82, HANDLER(sys_rename));
+	add_syscall(88, HANDLER(sys_symlink));
+	add_syscall(89, HANDLER(sys_readlink));
+	add_syscall(84, HANDLER(sys_rmdir));
+	add_syscall(78, HANDLER(sys_getdents));
 }
 
 }

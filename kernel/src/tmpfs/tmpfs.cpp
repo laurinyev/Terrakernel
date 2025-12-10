@@ -18,6 +18,8 @@ struct node_struct {
     uid_t uid;
     gid_t gid;
     int refcount;
+    bool isdev;
+    char devpath[256];
 };
 
 struct filedesc {
@@ -149,8 +151,16 @@ static node_struct* create_at_path(char* path, bool is_dir, mode_t mode) {
 	return create_at_path_internal(cwd, path, is_dir, mode);
 }
 
+#define DEBUG_RESOLVE_PATH
+#ifdef DEBUG_RESOLVE_PATH
+#define dresolvepath(fmt, ...) printf("[resolve_path] " fmt "\n", ##__VA_ARGS__)
+#else
+#define dresolvepath(fmt, ...)
+#endif
+
 static node_struct* resolve_path_internal(node_struct* base, const char* path) {
     if (!base || !path) {
+        dresolvepath("base or path is null");
         return nullptr;
     }
     
@@ -159,30 +169,40 @@ static node_struct* resolve_path_internal(node_struct* base, const char* path) {
     tmp[511] = '\0';
     
     node_struct* curr = (path[0] == '/') ? root : base;
+    dresolvepath("starting from %s", (path[0] == '/') ? "root" : "cwd");
 
     char* token = strtok(tmp, "/");
     
     while (token) {
+        dresolvepath("processing token '%s'", token);
+
         if (strcmp(token, ".") == 0) {
+            dresolvepath("skip '.'");
         } else if (strcmp(token, "..") == 0) {
             if (curr->parent) {
                 curr = curr->parent;
+                dresolvepath("move up to parent '%s'", curr->name);
             } else {
+                dresolvepath("already at root, cannot move up");
             }
         } else {
             node_struct* child = curr->first_child;
             while (child && strcmp(child->name, token) != 0) {
+                dresolvepath("Processing child %s", child->name);
                 child = child->next_sibling;
             }
             if (!child) {
+                dresolvepath("token '%s' not found under '%s'", token, curr->name);
                 return nullptr;
             }
             curr = child;
+            dresolvepath("move down to child '%s'", curr->name);
         }
 
         token = strtok(nullptr, "/");
     }
     
+    dresolvepath("resolved path to node '%s'", curr->name);
     return curr;
 }
 
@@ -215,6 +235,10 @@ void initialise() {
 }
 
 int chdir(const char* path) {
+    if (strcmp(path, "/") == 0) {
+        cwd = root;
+        return 0;
+    }
     node_struct* n = resolve_path(path);
     if (!n) return -1;
     cwd = n;
@@ -257,25 +281,31 @@ int rmdir(const char* path) {
     return 0;
 }
 
-int open(const char* path, int flags, mode_t mode) {
+int open(const char* path, int flags, mode_t mode, char* devpath) {
+    dresolvepath("Opening path %s with flags %d", path, flags);
     if (!path) return -1;
 
-    node_struct* n = nullptr;
-    bool created = false;
+    node_struct* n = resolve_path(path);
+    dresolvepath("Resolved path at %s to get node at %p\n\r", path, n);
 
-    if (flags & O_CREAT) {
-        n = resolve_path(path);
+    if (!n && (flags & O_CREAT)) {
+        dresolvepath("Flags contain O_CREAT, and n is null");
+        n = create_at_path((char*)path, false, mode);
+        dresolvepath("Created n (%p) at path %s", n, path);
         if (!n) {
-            n = create_at_path((char*)path, false, mode);
-            if (!n) return -2;
-            created = true;
+            dresolvepath("N is null");
+            return -2;
         }
-    } else {
-        n = resolve_path(path);
-        if (!n) return -3;
+
+        if (flags & O_BUILTIN_DEVICE_FILE) {
+            dresolvepath("Updating file to become a device");
+            n->isdev = true;
+            strncpy(n->devpath, devpath, sizeof(n->devpath) - 1);
+            n->devpath[sizeof(n->devpath) - 1] = '\0';
+        }
     }
 
-    // kaboom you if (n->is_dir && !(flags & O_DIRECTORY)) return -1;
+    if (!n) return -3;
 
     int fd = alloc_fd();
     if (fd < 0) return -4;
@@ -308,11 +338,21 @@ int close(int fd) {
 
 ssize_t read(int fd, void* buf, size_t count) {
     if (fd < 0 || fd >= 256) return -1;
+
     filedesc* f = &ftable.fd[fd];
     if (!f->node || f->node->is_dir || f->node->is_symlink) return -1;
+
     size_t rem = f->node->size - f->offset;
     size_t to_read = count < rem ? count : rem;
-    if (to_read > 0) mem::memcpy(buf, f->node->content + f->offset, to_read);
+
+    if (to_read > 0) {
+        mem::memcpy(buf, f->node->content + f->offset, to_read);
+    }
+
+    if (buf) {
+        ((char*)buf)[to_read] = 0;
+    }
+
     f->offset += to_read;
     return to_read;
 }
@@ -373,7 +413,7 @@ int fstat(int fd, struct stat* buf) {
     filedesc* f = &ftable.fd[fd];
     if (!f->node) return -1;
     buf->st_mode = f->node->is_dir ? (S_IFDIR | f->node->mode) : (S_IFREG | f->node->mode);
-    buf->st_size = f->node->size;
+    buf->st_size = f->node->size + 1;
     buf->st_uid = f->node->uid;
     buf->st_gid = f->node->gid;
     return 0;
@@ -526,6 +566,137 @@ ssize_t getdents(int fd, void* buf, size_t bufsize) {
         c = c->next_sibling;
     }
     return used;
+}
+
+constexpr size_t TAR_BLOCK_SIZE = 512;
+
+struct ustar_header {
+    char name[100];
+    char mode[8];
+    char uid[8];
+    char gid[8];
+    char size[12];
+    char mtime[12];
+    char chksum[8];
+    char typeflag;
+    char linkname[100];
+    char magic[6];
+    char version[2];
+    char uname[32];
+    char gname[32];
+    char devmajor[8];
+    char devminor[8];
+    char prefix[155];
+    char pad[12];
+};
+
+static size_t oct_to_size(const char* str, size_t n) {
+    size_t res = 0;
+    for (size_t i = 0; i < n && str[i] >= '0' && str[i] <= '7'; i++) {
+        res = (res << 3) | (str[i] - '0');
+    }
+    return res;
+}
+
+void load_initrd(void* base, size_t size) {
+    mkdir("/initrd", 0755);
+
+    uint8_t* ptr = reinterpret_cast<uint8_t*>(base);
+    uint8_t* end = ptr + size;
+
+    while (ptr + TAR_BLOCK_SIZE <= end) {
+        ustar_header* hdr = reinterpret_cast<ustar_header*>(ptr);
+
+        bool empty = true;
+        for (size_t i = 0; i < TAR_BLOCK_SIZE; i++) {
+            if (ptr[i] != 0) {
+                empty = false;
+                break;
+            }
+        }
+        if (empty) break;
+
+        size_t file_size = oct_to_size(hdr->size, sizeof(hdr->size));
+
+        if (strcmp(hdr->name, ".") == 0 || strcmp(hdr->name, "..") == 0) {
+            ptr += ((file_size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE + 1) * TAR_BLOCK_SIZE;
+            continue;
+        }
+
+        char full_path[256];
+        if (hdr->prefix[0]) {
+            snprintf(full_path, sizeof(full_path), "/initrd/%s/%s", hdr->prefix, hdr->name);
+        } else {
+            snprintf(full_path, sizeof(full_path), "/initrd/%s", hdr->name);
+        }
+
+        char clean_path[256];
+        char* dst = clean_path;
+        char* src = full_path;
+        char prev = 0;
+        while (*src) {
+            if (*src == '/') {
+                if (prev != '/') {
+                    *dst++ = '/';
+                    prev = '/';
+                }
+            } else if (*src == '.' && (prev == '/' || prev == 0) && (src[1] == '/' || src[1] == 0)) {
+                src++;
+                if (*src == '/') src++;
+                continue;
+            } else {
+                *dst++ = *src;
+                prev = *src;
+            }
+            src++;
+        }
+        *dst = 0;
+
+        if (hdr->typeflag == '5') {
+            mkdir(clean_path, 0755);
+        } else if (hdr->typeflag == '0' || hdr->typeflag == '\0') {
+            char tmp_path[256];
+            strncpy(tmp_path, clean_path, sizeof(tmp_path));
+            for (char* p = tmp_path + 1; *p; p++) {
+                if (*p == '/') {
+                    *p = 0;
+                    mkdir(tmp_path, 0755);
+                    *p = '/';
+                }
+            }
+
+            int fd = open(clean_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
+            printf("Created file at path %s, fd = %d\n\r", clean_path, fd);
+            if (fd >= 0 && file_size > 0) {
+                write(fd, ptr + TAR_BLOCK_SIZE, file_size);
+            }
+            if (fd >= 0) close(fd);
+        }
+
+        ptr += ((file_size + TAR_BLOCK_SIZE - 1) / TAR_BLOCK_SIZE + 1) * TAR_BLOCK_SIZE;
+    }
+
+    int dev_fd = open("/dev/initrd", O_CREAT | O_BUILTIN_DEVICE_FILE, 0644, "/initrd");
+    if (dev_fd >= 0) close(dev_fd);
+}
+
+void list_initrd() {
+    const char* dir_path = "/initrd";
+    int dfd = tmpfs::open(dir_path, O_DIRECTORY);
+    if (dfd < 0) return;
+
+    char dents[512];
+    ssize_t nread = tmpfs::getdents(dfd, dents, sizeof(dents));
+    if (nread <= 0) return;
+
+    size_t offset = 0;
+    while (offset < (size_t)nread) {
+        char* name = &dents[offset];
+        if (strcmp(name, ".") != 0 && strcmp(name, "..") != 0) {
+            printf("%s\n\r", name);
+        }
+        offset += strlen(name) + 1;
+    }
 }
 
 }

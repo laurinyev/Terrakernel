@@ -19,6 +19,8 @@
 #define O_DIRECTORY 0x10000
 #define O_CLOEXEC 0x80000
 
+#define O_BUILTIN_DEVICE_FILE 0x80000000
+
 #define S_IRUSR 0x0100
 #define S_IWUSR 0x0080
 #define S_IXUSR 0x0040
@@ -32,11 +34,25 @@
 #define S_IFDIR 0040000
 #define S_IFREG 0100000
 
+#define TIME_SIZE 24
+
 struct stat {
-	mode_t st_mode;
-	off_t st_size;
-	uid_t st_uid;
-	gid_t st_gid;
+    uint64_t st_dev;
+    uint64_t st_ino;
+    mode_t st_mode;
+    uint32_t st_nlink;
+    uid_t st_uid;
+    gid_t st_gid;
+    uint64_t rdev;
+    off_t st_size;
+    uint64_t st_blksize;
+    uint64_t st_blocks;
+    uint8_t st_atime[TIME_SIZE];
+    uint8_t st_mtime[TIME_SIZE];
+    uint8_t st_ctime[TIME_SIZE];
+    uint32_t st_result_mask;
+    uint32_t st_attributes;
+    uint64_t st_change_cookie;
 };
 
 namespace tmpfs {
@@ -47,7 +63,7 @@ int chdir(const char* path);
 int mkdir(const char* path, mode_t mode);
 int mkdirat(int dirfd, const char* path, mode_t mode);
 
-int open(const char* path, int flags, mode_t mode = 0755);
+int open(const char* path, int flags, mode_t mode = 0755, char* devpath = nullptr);
 int openat(int dirfd, const char* path, int flags, mode_t mode = 0755);
 int close(int fd);
 ssize_t read(int fd, void* buf, size_t count);
@@ -71,7 +87,8 @@ ssize_t readlink(const char* path, char* buf, size_t bufsize);
 int rmdir(const char* path);
 ssize_t getdents(int fd, void* buf, size_t bufsize);
 
-void tmpfs_test();
+void load_initrd(void* base, size_t size);
+void list_initrd();
 
 }
 

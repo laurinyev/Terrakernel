@@ -86,21 +86,27 @@ extern "C" void init() {
     int stdin = tmpfs::open("/dev/stdin", O_CREAT | O_RDWR);
     int stdout = tmpfs::open("/dev/stdout", O_CREAT | O_RDWR);
     int stderr = tmpfs::open("/dev/stderr", O_CREAT | O_RDWR);
+    tmpfs::load_initrd(module_request.response->modules[0]->address, module_request.response->modules[0]->size);
+    tmpfs::list_initrd();
     Log::print_status("OK", "TMPFS Initialised");
+
+    printf("\n\r");
+    int fd = tmpfs::open("/initrd/./hello.txt", O_RDWR);
+    printf("opened hello.txt at %d\n\r", fd);
+    stat sbuf;
+    tmpfs::fstat(fd, &sbuf);
+    char* buf = (char*)mem::heap::malloc(sbuf.st_size);
+    tmpfs::read(fd, buf, sbuf.st_size);
+    printf("Contents of %s\n\r%s\n\r", "/initrd/hello.txt", buf);
+    mem::heap::free(buf);
+
+    printf("\n\r=== === ===\n\r\n\r");
 
     pci::initialise();
     Log::print_status("OK", "Detected all PCI devices");
 
-    /*
     ahci::initialise();
     Log::print_status("OK", "AHCI Initialised");
-
-    uint8_t buf[512];
-    ssize_t num = ahci::ahci_driver_read(0, 0, 1, buf);
-    for (int i = 0; i < sizeof(buf); i++) {
-        printf("%c", buf[i]);
-    }
-    */
 
 	arch::x86_64::syscall::initialise();
     Log::print_status("OK", "Syscalls Initialised");

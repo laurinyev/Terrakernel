@@ -34,24 +34,21 @@ run-hdd: run-hdd-$(ARCH)
 
 run-x86_64: edk2-ovmf $(IMAGE_NAME).iso
 	qemu-system-$(ARCH) \
-		-M q35 \
+		-machine q35 \
 		-drive if=pflash,unit=0,format=raw,file=edk2-ovmf/ovmf-code-$(ARCH).fd,readonly=on \
-		-device ich9-ahci,id=ahci0 \
-		-drive id=disk0,file=$(IMAGE_NAME).iso,format=raw,if=none \
-		-device ide-hd,drive=disk0,bus=ahci0.0 \
-		-device e1000 \
+		-device ahci,id=ahci0 \
+		-drive id=disk,if=none,file=$(IMAGE_NAME).iso,format=raw \
+		-device ide-hd,drive=disk,bus=ahci0.0 \
 		$(QEMUFLAGS)
 
 .PHONY: run-hdd-x86_64
 run-hdd-x86_64: edk2-ovmf $(IMAGE_NAME).hdd
 	qemu-system-$(ARCH) \
-		-M q35 \
+		-machine q35 \
 		-drive if=pflash,unit=0,format=raw,file=edk2-ovmf/ovmf-code-$(ARCH).fd,readonly=on \
-		-hda $(IMAGE_NAME).hdd \
-		-device ich9-ahci,id=ahci0 \
-		-drive id=disk0,file=disk.img,format=raw,if=none \
-		-device ide-hd,drive=disk0,bus=ahci0.0 \
-		-device e1000 \
+		-device ahci,id=ahci0 \
+		-drive id=disk,if=none,file=$(IMAGE_NAME).hdd,format=raw \
+		-device ide-hd,drive=disk,bus=ahci0.0 \
 		$(QEMUFLAGS)
 
 .PHONY: run-bios
@@ -139,7 +136,7 @@ endif
 
 $(IMAGE_NAME).hdd: limine/limine kernel
 	@rm -f $(IMAGE_NAME).hdd
-	@dd if=/dev/zero bs=1M count=0 seek=64 of=$(IMAGE_NAME).hdd
+	@dd if=/dev/zero bs=1M count=64 of=$(IMAGE_NAME).hdd
 ifeq ($(ARCH),x86_64)
 	@PATH=$$PATH:/usr/sbin:/sbin sgdisk $(IMAGE_NAME).hdd -n 1:2048 -t 1:ef00 -m 1
 	@./limine/limine bios-install $(IMAGE_NAME).hdd

@@ -24,10 +24,10 @@ Terra is the operating system I'm planning to use terrakernel for.
 - [x] Switch to fully graphical (flanterm) messages and logs
 - [x] Port uACPI
 - [x] (Other) Write a VFS and TMPFS and parse a USTAR Initrd archive
-- [ ] Scheduling
+- [ ] Scheduling (delayed)
 - [x] Switching to userspace
-- [ ] Write some basic syscalls
-- [ ] Load x86_64 ELF binaries, static and relocatable (copy from old version of TK)
+- [x] Write some basic syscalls
+- [ ] Load x86_64 ELF binaries, static and relocatable (copy from old version of TK)*
 - [ ] End of x86_64 stuff (almost)
 
 ### Other
