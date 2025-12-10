@@ -32,8 +32,8 @@ Terra is the operating system I'm planning to use terrakernel for.
 
 ### Other
 - [x] Write a VFS and TMPFS and parse a USTAR Initrd archive
-- [ ] Add support for /dev/XYZ files
-- [ ] Write a PCI driver
+- [x] Add support for /dev/XYZ files (use O_BUILTIN_DEVICE_FILE in kernel, also requires an additional parameter which is devpath, the path to the device directory, usually for disks, e.g., initrd creates two nodes, /dev/initrd (initrd disk image) and /initrd the directory itself)
+- [x] Write a PCI driver
 - [ ] Write a PS2 keyboard driver
 - [ ] Write a PS2 mouse driver
 - [ ] Try to write an XHCI driver for USB device support
