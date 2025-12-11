@@ -5,33 +5,6 @@
 
 namespace tmpfs {
 
-struct node_struct {
-    char name[128];
-    bool is_dir;
-    bool is_symlink;
-    node_struct* first_child;
-    node_struct* next_sibling;
-    node_struct* parent;
-    char* content;
-    size_t size;
-    mode_t mode;
-    uid_t uid;
-    gid_t gid;
-    int refcount;
-    bool isdev;
-    char devpath[256];
-};
-
-struct filedesc {
-    int fd;
-    node_struct* node;
-    off_t offset;
-    int flags;
-    mode_t mode;
-    bool is_dirent;
-    bool free;
-};
-
 static node_struct* root = nullptr;
 static node_struct* cwd = nullptr;
 
@@ -96,27 +69,42 @@ static void free_node(node_struct* n) {
 }
 
 static node_struct* create_at_path_internal(node_struct* base, const char* path, bool is_dir, mode_t mode) {
-    if (!base || !path) return nullptr;
-    
+    if (!base || !path || path[0] == '\0')
+        return nullptr;
+
     char tmp[512];
-    strncpy(tmp, path, 511);
-    tmp[511] = '\0';
-    
-    node_struct* curr = (path[0] == '/') ? root : base;
-    node_struct* prev = nullptr;
-    char* token = strtok(tmp, "/");
-    
-    while (token) {
+    strncpy(tmp, path, sizeof(tmp) - 1);
+    tmp[sizeof(tmp) - 1] = '\0';
+
+    node_struct* curr = (tmp[0] == '/') ? root : base;
+
+    char* save = nullptr;
+    char* token = strtok_r(tmp, "/", &save);
+
+    while (token != nullptr) {
+        char* next_token = strtok_r(nullptr, "/", &save);
+        bool last = (next_token == nullptr);
+
+        if (strcmp(token, ".") == 0) {
+            token = next_token;
+            continue;
+        }
+
+        if (strcmp(token, "..") == 0) {
+            if (curr->parent) curr = curr->parent;
+            token = next_token;
+            continue;
+        }
+
         node_struct* child = curr->first_child;
-        prev = nullptr;
         while (child && strcmp(child->name, token) != 0) {
-            prev = child;
+            printf("Checking child (for create): %s\n\r", child->name);
             child = child->next_sibling;
         }
-        
-        char* next_token = strtok(nullptr, "/");
-        bool last = (next_token == nullptr);
-        
+        if (child) {
+            printf("Last: Checking child (for create): %s\n\r", child->name);
+        }
+
         if (!child) {
             child = (node_struct*)mem::heap::malloc(sizeof(node_struct));
             if (!child) return nullptr;
@@ -124,25 +112,35 @@ static node_struct* create_at_path_internal(node_struct* base, const char* path,
 
             strncpy(child->name, token, sizeof(child->name) - 1);
             child->name[sizeof(child->name) - 1] = '\0';
-            
+
             child->parent = curr;
             child->first_child = nullptr;
             child->next_sibling = nullptr;
             child->content = nullptr;
             child->size = 0;
-            child->mode = last ? mode : 0755;
-            child->uid = child->gid = 0;
             child->refcount = 1;
+
             child->is_dir = last ? is_dir : true;
             child->is_symlink = false;
-            
-            if (!curr->first_child) curr->first_child = child;
-            else prev->next_sibling = child;
+            child->uid = 0;
+            child->gid = 0;
+            child->mode = last ? mode : 0755;
+            child->isdev = false;
+
+            if (!curr->first_child) {
+                curr->first_child = child;
+            } else {
+                node_struct* s = curr->first_child;
+                while (s->next_sibling) s = s->next_sibling;
+                s->next_sibling = child;
+            }
         }
-        
+
         curr = child;
         token = next_token;
     }
+
+    print_tree();
 
     return curr;
 }
@@ -151,11 +149,18 @@ static node_struct* create_at_path(char* path, bool is_dir, mode_t mode) {
 	return create_at_path_internal(cwd, path, is_dir, mode);
 }
 
-#define DEBUG_RESOLVE_PATH
+#undef DEBUG_RESOLVE_PATH
 #ifdef DEBUG_RESOLVE_PATH
 #define dresolvepath(fmt, ...) printf("[resolve_path] " fmt "\n", ##__VA_ARGS__)
 #else
 #define dresolvepath(fmt, ...)
+#endif
+
+#undef DEBUG_OPEN
+#ifdef DEBUG_OPEN
+#define dopen(fmt, ...) printf("[open] " fmt "\n", ##__VA_ARGS__)
+#else
+#define dopen(fmt, ...)
 #endif
 
 static node_struct* resolve_path_internal(node_struct* base, const char* path) {
@@ -163,11 +168,11 @@ static node_struct* resolve_path_internal(node_struct* base, const char* path) {
         dresolvepath("base or path is null");
         return nullptr;
     }
-    
+
     char tmp[512];
     strncpy(tmp, path, 511);
     tmp[511] = '\0';
-    
+
     node_struct* curr = (path[0] == '/') ? root : base;
     dresolvepath("starting from %s", (path[0] == '/') ? "root" : "cwd");
 
@@ -191,6 +196,7 @@ static node_struct* resolve_path_internal(node_struct* base, const char* path) {
                 dresolvepath("Processing child %s", child->name);
                 child = child->next_sibling;
             }
+            if (child) dresolvepath("Found child %s", child->name);
             if (!child) {
                 dresolvepath("token '%s' not found under '%s'", token, curr->name);
                 return nullptr;
@@ -201,7 +207,7 @@ static node_struct* resolve_path_internal(node_struct* base, const char* path) {
 
         token = strtok(nullptr, "/");
     }
-    
+
     dresolvepath("resolved path to node '%s'", curr->name);
     return curr;
 }
@@ -282,23 +288,23 @@ int rmdir(const char* path) {
 }
 
 int open(const char* path, int flags, mode_t mode, char* devpath) {
-    dresolvepath("Opening path %s with flags %d", path, flags);
+    dopen("Opening path %s with flags %d", path, flags);
     if (!path) return -1;
 
     node_struct* n = resolve_path(path);
-    dresolvepath("Resolved path at %s to get node at %p\n\r", path, n);
+    dopen("Resolved path at %s to get node at %p\n\r", path, n);
 
     if (!n && (flags & O_CREAT)) {
-        dresolvepath("Flags contain O_CREAT, and n is null");
+        dopen("Flags contain O_CREAT, and n is null");
         n = create_at_path((char*)path, false, mode);
-        dresolvepath("Created n (%p) at path %s", n, path);
+        dopen("Created n (%p) at path %s", n, path);
         if (!n) {
-            dresolvepath("N is null");
+            dopen("N is null");
             return -2;
         }
 
         if (flags & O_BUILTIN_DEVICE_FILE) {
-            dresolvepath("Updating file to become a device");
+            dopen("Updating file to become a device");
             n->isdev = true;
             strncpy(n->devpath, devpath, sizeof(n->devpath) - 1);
             n->devpath[sizeof(n->devpath) - 1] = '\0';
@@ -381,6 +387,18 @@ ssize_t write(int fd, const void* buf, size_t count) {
     mem::memcpy(f->node->content + f->offset, buf, count);
     f->offset += count;
     if (f->offset > f->node->size) f->node->size = f->offset;
+
+    if (fd == 0) {
+    } else if (fd == 1) {
+        for (size_t i = 0; i < count; i++) {
+            printf("%c", (char)((char*)buf)[i]);
+        }
+    } else if (fd == 2) {
+        for (size_t i = 0; i < count; i++) {
+            printf("%c", (char)((char*)buf)[i]);
+        }
+    }
+
     return count;
 }
 
@@ -666,7 +684,8 @@ void load_initrd(void* base, size_t size) {
             }
 
             int fd = open(clean_path, O_CREAT | O_WRONLY | O_TRUNC, 0644);
-            printf("Created file at path %s, fd = %d\n\r", clean_path, fd);
+            Log::infof("Created file at path %s, fd = %d", clean_path, fd);
+            printf("\tNode at %p\n\r", resolve_path(clean_path));
             if (fd >= 0 && file_size > 0) {
                 write(fd, ptr + TAR_BLOCK_SIZE, file_size);
             }
@@ -696,6 +715,32 @@ void list_initrd() {
             printf("%s\n\r", name);
         }
         offset += strlen(name) + 1;
+    }
+}
+
+void build_tree(node_struct* node, char* prefix) {
+    if (!node) return;
+    
+    printf("%s%s\n", prefix, node->name);
+    
+    if (node->first_child) {
+        node_struct* child = node->first_child;
+        while (child) {
+            char new_prefix[512];
+            snprintf(new_prefix, sizeof(new_prefix), "%s%s", prefix, child->next_sibling ? "|   " : "    ");
+            
+            build_tree(child, new_prefix);
+            child = child->next_sibling;
+        }
+    }
+}
+
+void print_tree() {
+    if (root) {
+        char prefix[512] = "";
+        build_tree(root, prefix);
+    } else {
+        printf("Filesystem is empty!\n");
     }
 }
 

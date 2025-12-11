@@ -1,5 +1,6 @@
 #include <drivers/timers/pit.hpp>
 #include <drivers/serial/print.hpp>
+#include <drivers/video/std_fb.hpp>
 
 struct pit_interrupt {
     void (*handler)();

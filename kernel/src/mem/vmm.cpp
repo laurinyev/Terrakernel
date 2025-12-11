@@ -65,11 +65,14 @@ bool is_mapped(void* vaddr) {
     return true;
 }
 
-void mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes) {
+uint64_t mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes) {
+    printf("mmap(%p, %p, %llu, %llu);\n\r", paddr, vaddr, npages, attributes);
     if (is_mapped(vaddr)) munmap(vaddr, npages);
 
     uint64_t va = (uint64_t)vaddr;
     uint64_t pa = (uint64_t)paddr;
+
+    uint64_t first_page;
 
     for (size_t i = 0; i < npages; i++, va += 0x1000, pa += 0x1000) {
         uint64_t pml4_index = (va >> 39) & 0x1FF;
@@ -109,7 +112,11 @@ void mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes) {
 
         uint64_t leaf_flags = PAGE_PRESENT | (attributes & (PAGE_RW | PAGE_USER));
         pt[pt_index] = (pa & ~0xFFF) | leaf_flags;
+
+        first_page = pt[pt_index];
     }
+
+    return first_page;
 }
 
 void munmap(void* vaddr, size_t npages) {

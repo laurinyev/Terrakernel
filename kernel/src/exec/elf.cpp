@@ -4,6 +4,7 @@
 #include <mem/vmm.hpp>
 #include <mem/pmm.hpp>
 #include <arch/arch.hpp>
+#include <drivers/serial/print.hpp>
 
 constexpr size_t PAGE_SIZE = 0x1000;
 
@@ -92,7 +93,7 @@ static void apply_relocations(void* load_base, Elf64_Phdr* phdrs, int phnum) {
     }
 }
 
-void run_elf(void* base, size_t /*filesz*/) {
+void run_elf(void* base, size_t filesz) {
     auto* ehdr = reinterpret_cast<Elf64_Ehdr*>(base);
 
     if (!(ehdr->e_ident[0] == 0x7F && ehdr->e_ident[1] == 'E' &&
@@ -100,7 +101,7 @@ void run_elf(void* base, size_t /*filesz*/) {
         return;
     }
 
-    uintptr_t load_base = 0; // use uintptr_t for arithmetic
+    void* load_base = 0;
 
     auto* phdr = reinterpret_cast<Elf64_Phdr*>(
         reinterpret_cast<uint8_t*>(base) + ehdr->e_phoff);
@@ -108,26 +109,27 @@ void run_elf(void* base, size_t /*filesz*/) {
     for (int i = 0; i < ehdr->e_phnum; i++) {
         if (phdr[i].p_type != PT_LOAD) continue;
 
-        uintptr_t seg_base = (ehdr->e_type == ET_DYN) ? load_base + phdr[i].p_vaddr
-                                                      : phdr[i].p_vaddr;
+        void* seg_base = (ehdr->e_type == ET_DYN) ? (void*)((uint64_t)load_base + phdr[i].p_vaddr)
+                                                      : (void*)(phdr[i].p_vaddr);
         size_t memsz = phdr[i].p_memsz;
         size_t filesz = phdr[i].p_filesz;
-        uintptr_t offset = phdr[i].p_offset;
+        void* offset = (void*)(phdr[i].p_offset);
 
-        uintptr_t map_start = seg_base & ~(PAGE_SIZE - 1);
-        uintptr_t map_end   = (seg_base + memsz + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-        size_t map_pages = (map_end - map_start) / PAGE_SIZE;
+        void* map_start = (void*)((uint64_t)seg_base & ~(PAGE_SIZE - 1));
+        void* map_end   = (void*)(((uint64_t)seg_base + memsz + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1));
+        size_t map_pages = ((uint64_t)map_end - (uint64_t)map_start) / PAGE_SIZE;
 
         for (size_t p = 0; p < map_pages; p++) {
-            uintptr_t page_addr = map_start + p * PAGE_SIZE;
-            mem::vmm::mmap(reinterpret_cast<void*>(page_addr),
+            void* page_addr = map_start + p * PAGE_SIZE;
+            mem::vmm::munmap(reinterpret_cast<void*>(page_addr), 1); // ensure it is unmapped
+            uint64_t ret = mem::vmm::mmap(reinterpret_cast<void*>(page_addr),
                            reinterpret_cast<void*>(page_addr),
                            1,
                            PAGE_PRESENT | PAGE_RW | PAGE_USER);
         }
 
         mem::memcpy(reinterpret_cast<void*>(seg_base),
-                    reinterpret_cast<uint8_t*>(base) + offset,
+                    reinterpret_cast<uint8_t*>(base) + (uint64_t)offset,
                     filesz);
         if (memsz > filesz) {
             mem::memset(reinterpret_cast<uint8_t*>(seg_base) + filesz, 0, memsz - filesz);
@@ -138,20 +140,17 @@ void run_elf(void* base, size_t /*filesz*/) {
         apply_relocations(reinterpret_cast<void*>(load_base), phdr, ehdr->e_phnum);
     }
 
-    // Allocate a 2-page stack
     void* stack_phys1 = mem::pmm::palloc(1);
     void* stack_phys2 = mem::pmm::palloc(1);
-    void* stack_base  = reinterpret_cast<void*>(mem::vmm::valloc(2));
 
-    mem::vmm::mmap(stack_base, stack_phys1, 1, PAGE_PRESENT | PAGE_RW | PAGE_USER);
-    mem::vmm::mmap(reinterpret_cast<uint8_t*>(stack_base) + PAGE_SIZE,
-                    stack_phys2, 1, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+    mem::vmm::mmap(stack_phys1, stack_phys1, 1, PAGE_PRESENT | PAGE_RW | PAGE_USER);
+    mem::vmm::mmap(stack_phys2, stack_phys2, 1, PAGE_PRESENT | PAGE_RW | PAGE_USER);
 
-    uintptr_t entry_addr = (ehdr->e_type == ET_DYN)
-                               ? load_base + ehdr->e_entry
-                               : ehdr->e_entry;
+    void* entry_addr = (ehdr->e_type == ET_DYN)
+                               ? (void*)(load_base + ehdr->e_entry)
+                               : (void*)(ehdr->e_entry);
 
     arch::x86_64::ringctl::execute_ring3(
         reinterpret_cast<void(*)()>(entry_addr),
-        reinterpret_cast<uint8_t*>(stack_base) + 2 * PAGE_SIZE);
+        reinterpret_cast<uint8_t*>(stack_phys2) + PAGE_SIZE);
 }

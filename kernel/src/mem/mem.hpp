@@ -30,7 +30,7 @@ namespace mem {
 		void initialise();
 		void* valloc(size_t npages);
 		void free(void* ptr, size_t npages);
-		void mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes);
+		uint64_t mmap(void* paddr, void* vaddr, size_t npages, uint64_t attributes);
 		void munmap(void* vaddr, size_t npages);
 	}
 

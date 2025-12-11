@@ -13,6 +13,9 @@
 #include <tmpfs/tmpfs.hpp>
 #include <pci/pci.hpp>
 #include <drivers/blockio/ahci.hpp>
+#include <drivers/video/std_fb.hpp>
+#include <drivers/video/placeholder_video.hpp>
+#include <exec/elf.hpp>
 
 #define UACPI_ERROR(name, isinit) \
 if (uacpi_unlikely_error(uacpi_result)) { \
@@ -90,18 +93,6 @@ extern "C" void init() {
     tmpfs::list_initrd();
     Log::print_status("OK", "TMPFS Initialised");
 
-    printf("\n\r");
-    int fd = tmpfs::open("/initrd/./hello.txt", O_RDWR);
-    printf("opened hello.txt at %d\n\r", fd);
-    stat sbuf;
-    tmpfs::fstat(fd, &sbuf);
-    char* buf = (char*)mem::heap::malloc(sbuf.st_size);
-    tmpfs::read(fd, buf, sbuf.st_size);
-    printf("Contents of %s\n\r%s\n\r", "/initrd/hello.txt", buf);
-    mem::heap::free(buf);
-
-    printf("\n\r=== === ===\n\r\n\r");
-
     pci::initialise();
     Log::print_status("OK", "Detected all PCI devices");
 
@@ -111,8 +102,39 @@ extern "C" void init() {
 	arch::x86_64::syscall::initialise();
     Log::print_status("OK", "Syscalls Initialised");
 
+    tmpfs::print_tree();
+    printf("\n\r");
+
+	int fd = tmpfs::open("/initrd/init", O_RDWR);
+    printf("Opened file %d\n\r", fd);
+	stat sb;
+	tmpfs::fstat(fd, &sb);
+	if (sb.st_size < 1) { // It will always be 1+ because there is a fake byte being added, a zero, basically
+							// its a file terminator if you are slow to understand :>
+		Log::errf("Failed to get valid init process");
+		asm volatile ("cli;hlt;");
+	}
+
+	void* buf = mem::heap::malloc(sb.st_size);
+	ssize_t to_read = tmpfs::read(fd, buf, sb.st_size);
+	if (to_read < 1) {
+		Log::errf("Failed to read valid init data");
+		asm volatile ("cli;hlt;");
+	}
+
+	run_elf(buf, to_read);
+
+	/* To contributors and to me because I (~~__##**WILL**##__~~) forget :>
+
+		MAKE THIS INIT THE LAST BECAUSE DEBUG MESAGES DNT SHOW UP IF STD_FB DEVICE IS INITIALISED
+
+	*/
+
+    driver::video::std_fb::initialise();
+    Log::print_status("OK", "STD FB Device Initialised, Created /dev/std_fb");
+
     while (1) {
-    	asm volatile("hlt");
+        asm volatile("hlt");
     }
     
     __builtin_unreachable();

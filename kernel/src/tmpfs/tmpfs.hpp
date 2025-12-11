@@ -55,6 +55,33 @@ struct stat {
     uint64_t st_change_cookie;
 };
 
+struct node_struct {
+    char name[128];
+    bool is_dir;
+    bool is_symlink;
+    node_struct* first_child;
+    node_struct* next_sibling;
+    node_struct* parent;
+    char* content;
+    size_t size;
+    mode_t mode;
+    uid_t uid;
+    gid_t gid;
+    int refcount;
+    bool isdev;
+    char devpath[256];
+};
+
+struct filedesc {
+    int fd;
+    node_struct* node;
+    off_t offset;
+    int flags;
+    mode_t mode;
+    bool is_dirent;
+    bool free;
+};
+
 namespace tmpfs {
 
 void initialise();
@@ -89,6 +116,9 @@ ssize_t getdents(int fd, void* buf, size_t bufsize);
 
 void load_initrd(void* base, size_t size);
 void list_initrd();
+
+void build_tree(node_struct* node, char* prefix);
+void print_tree();
 
 }
 

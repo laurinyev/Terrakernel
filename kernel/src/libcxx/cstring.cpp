@@ -109,6 +109,39 @@ char* strtok(char* str, const char* delim) {
     return start;
 }
 
+char* strtok_r(char* str, const char* delim, char** saveptr) {
+    char* token;
+
+    if (str != nullptr)
+        *saveptr = str;
+
+    if (*saveptr == nullptr)
+        return nullptr;
+
+    char* s = *saveptr;
+    while (*s && strchr(delim, *s))
+        s++;
+
+    if (*s == '\0') {
+        *saveptr = nullptr;
+        return nullptr;
+    }
+
+    token = s;
+
+    while (*s && !strchr(delim, *s))
+        s++;
+
+    if (*s == '\0') {
+        *saveptr = nullptr;
+    } else {
+        *s = '\0';
+        *saveptr = s + 1;
+    }
+
+    return token;
+}
+
 char* strrchr(const char* s, int c) {
 	const char* last = 0;
 	while (*s) {

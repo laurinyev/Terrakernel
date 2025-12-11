@@ -1,6 +1,9 @@
 #ifndef HANDLERS_HPP
 #define HANDLERS_HPP 1
 
+#include <cstdint>
+#include <types.hpp>
+
 uint64_t sys_open(const char* path, int flags, mode_t mode);
 uint64_t sys_close(int fd);
 uint64_t sys_read(int fd, void* buf, size_t count);
@@ -24,4 +27,4 @@ uint64_t sys_readlink(const char* path, char* buf, size_t bufsize);
 uint64_t sys_rmdir(const char* path);
 uint64_t sys_getdents(int fd, void* buf, size_t bufsize);
 
-    #endif
+#endif
