@@ -115,9 +115,13 @@ extern "C" void init() {
     sched::initialise();
     Log::printf_status("OK", "Scheduler Initialised");
 
+	char* buf = (char*)mem::heap::malloc(128);
     while (1) {
+		int read = (int)driver::input::ps2k::read(128, buf, true);
+		printf("Read %d characters: %s\n\r", read, buf);
         asm volatile("hlt");
     }
+	mem::heap::free(buf);
     
     __builtin_unreachable();
 }

@@ -19,4 +19,17 @@
 #define PS2K_CFG_ALLOC_BUF_MALLOC
 // #undef PS2K_ALLOC_BUF_MALLOC
 
+/*
+	Configure whether the (ps2k) keyboard driver handles \b (backspace) independently, meaning it wont just print it,
+		it also handles it
+*/
+#define PS2K_CFG_HANDLE_BACKSPACE_INDEPENDENTLY
+// #undef PS2K_CFG_HANDLE_BACKSPACE_INDEPENDENTLY
+
+/*
+	Configure whether the (ps2k) keyboard driver runs flush() after read ops
+*/
+#define PS2K_CFG_HANDLE_FLUSH
+// #undef PS2K_CFG_HANDLE_FLUSH
+
 #endif
