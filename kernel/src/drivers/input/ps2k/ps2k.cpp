@@ -12,7 +12,7 @@
 namespace drivers::input::ps2k {
 
 #ifdef PS2K_CFG_ALLOC_BUF
-static key_event fifo_buffer[64];
+static key_event fifo_buffer[PS2K_CFG_INITIAL_BUF_SIZE];
 #endif
 
 struct event_buffer {
@@ -21,6 +21,7 @@ struct event_buffer {
     size_t head;
     size_t tail;
     size_t count;
+    bool drop_events;
     event_callback_fn callback;
     void* callback_userdata;
 };
@@ -38,9 +39,14 @@ static inline bool buffer_is_full(const event_buffer& buf) {
 static bool buffer_push(event_buffer& buf, const key_event& ev) {
     if (buffer_is_full(buf)) {
 #ifdef PS2K_CFG_DEBUG
-        printf("[ps2k] Warning: event buffer overflow, dropping event\n");
+        printf("[ps2k] Warning: event buffer overflow, %s\n", buf.drop_events == true ? "dropping event" : "flushing buffer");
 #endif
-        return false;
+
+		if (buf.drop_events) {
+			return false;
+		} else {
+			flush_events();
+		}
     }
     
     buf.events[buf.tail] = ev;
@@ -203,7 +209,7 @@ static int ps2k_ioctl(unsigned long request, void* arg) {
 void initialise() {
 #ifdef PS2K_CFG_ALLOC_BUF
     evbuf.events = fifo_buffer;
-    evbuf.capacity = 64;
+    evbuf.capacity = PS2K_CFG_INITIAL_BUF_SIZE;
 #else
     evbuf.capacity = PS2K_CFG_INITIAL_BUF_SIZE;
 #ifdef PS2K_CFG_ALLOC_BUF_MALLOC
@@ -214,6 +220,12 @@ void initialise() {
     size_t pages = (evbuf.capacity * sizeof(key_event) + 0xFFF) / 0x1000;
     evbuf.events = static_cast<key_event*>(mem::vmm::valloc(pages));
 #endif
+#endif
+
+#ifdef PS2K_CFG_DROP_EVENTS_ON_FAILURE_OR_OVERFLOW
+	evbuf.drop_events = true;
+#else
+	evbuf.drop_events = false;
 #endif
     
     if (!evbuf.events) {

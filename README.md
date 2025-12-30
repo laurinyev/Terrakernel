@@ -35,7 +35,7 @@ Terra is the operating system I'm planning to use terrakernel for.
 - [x] Add support for /dev/XYZ files (use O_BUILTIN_DEVICE_FILE in kernel, also requires an additional parameter which is devpath, the path to the device directory, usually for disks, e.g., initrd creates two nodes, /dev/initrd (initrd disk image) and /initrd the directory itself)
 - [x] Write a PCI driver (PCIe as well)
 - [x] Write a PS2 keyboard driver
-- [ ] Line discipline
+- [x] Line discipline
 - [ ] Try to write an XHCI driver for USB device support
 - [ ] Write some disk drivers, probably AHCI only for now*
 - [ ] Some filesystem drivers, probably FAT32 and maybe, maybe, maybe EXT3 or EXT4
@@ -55,20 +55,20 @@ Check [BUILD_INSTRUCTIONS.md](https://github.com/Atlas-Software-Org/Terrakernel/
 ### How many LoC?
 
 ```x86asm
-     135 text files.
-     133 unique files.
-       2 files ignored.
+     139 text files.
+     136 unique files.
+       3 files ignored.
 
-github.com/AlDanial/cloc v 1.98  T=0.40 s (334.3 files/s, 106347.8 lines/s)
+github.com/AlDanial/cloc v 1.98  T=0.29 s (468.6 files/s, 146923.1 lines/s)
 -------------------------------------------------------------------------------
 Language                     files          blank        comment           code
 -------------------------------------------------------------------------------
 C                               23           4471           1207          21198
-C/C++ Header                    81           1471           2061           7353
-C++                             23            797              2           3473
+C/C++ Header                    83           1487           2071           7478
+C++                             24            833              2           3627
 Assembly                         5             26              8            216
 CMake                            1              0              0             21
 -------------------------------------------------------------------------------
-SUM:                           133           6765           3278          32261 (31872 old)
+SUM:                           136           6817           3288          32540 (32261 old)
 -------------------------------------------------------------------------------
 ```

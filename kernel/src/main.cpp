@@ -18,6 +18,7 @@
 #include <drivers/input/ps2k/ps2k.hpp>
 #include <drivers/input/ps2k/ps2k_key_event.hpp>
 #include <pcie/pcie.hpp>
+#include <drivers/tty/ldisc/ldisc.hpp>
 
 #define UACPI_ERROR(name, isinit) \
 if (uacpi_unlikely_error(uacpi_result)) { \
@@ -36,10 +37,6 @@ volatile struct limine_module_request module_request = {
     .revision = 0,
     .response = nullptr, // shut up gcc
 };
-
-void line_discipline_test(const key_event& ev, void* userdata) {
-	printf("Got line discipline callback, ev.keycode = 0x04%X; ev.state = %s\n\r", ev.keycode, ev.state == key_state::RELEASED ? "RELEASED" : "PRESSED");
-}
 
 extern "C" void init() {
     if (module_request.response == nullptr || module_request.response->module_count < 1) {
@@ -120,13 +117,20 @@ extern "C" void init() {
 	drivers::input::ps2k::initialise();
 	Log::printf_status("OK", "PS2K Initialised");
 
-	drivers::input::ps2k::flush_events();
-	drivers::input::ps2k::set_event_callback((event_callback_fn)line_discipline_test, nullptr);
+	drivers::tty::ldisc::initialise();
+	Log::printf_status("OK", "Line Discipline Initialised");
 
     sched::initialise();
     Log::printf_status("OK", "Scheduler Initialised");
 
+	char buf[4096] = {0};
     while (1) {
+    	printf("> ");
+    	size_t read = drivers::tty::ldisc::read(true, buf, 4096);
+    	printf("Read %zu characters: %s\n\r", read, buf);
+    	for (size_t i = 0; i < read; i++) {
+    		printf("%02X (%c)\n\r", buf[i], ('a' <= buf[i] && buf[i] < 'z') || ('A' <= buf[i] && buf[i] < 'Z') || ('0' <= buf[i] && buf[i] < '9') ? buf[i] : '.');
+    	}
         asm volatile("hlt");
     }
     
