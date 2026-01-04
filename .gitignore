@@ -1,5 +1,7 @@
 /limine
 /ovmf
+/kernel/src/config.hpp
 *.iso
 *.hdd
 OVMF*
+.config
