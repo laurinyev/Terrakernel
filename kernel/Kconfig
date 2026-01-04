@@ -13,7 +13,7 @@ config PS2K_INITIAL_BUF_SIZE
 
 config PS2K_DEBUG
     bool "Debugging"
-    default y
+    default n
 
 config PS2K_ALLOC_BUF_MALLOC
     bool "Use malloc over Valloc"
